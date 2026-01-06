@@ -299,6 +299,26 @@ class OpenSubtitlesProvider(SubtitleProvider):
                     f"OpenSubtitles search strategy 3: filename={filename}, season={season}, episode={episode}"
                 )
 
+            # Strategy 4: imdbid
+            if imdb_id:
+                imdb_id = imdb_id.lstrip("tt")  # Remove leading 'tt' from IMDB ID
+                criteria = {
+                    "sublanguageid": opensubtitles_lang,
+                    "imdbid": imdb_id,  # Remove leading 'tt' from IMDB ID
+                }
+
+                if season is not None:
+                    criteria["season"] = str(season)
+
+                if episode is not None:
+                    criteria["episode"] = str(episode)
+
+                search_criteria.append(criteria)
+
+                logger.trace(
+                    f"OpenSubtitles search strategy 4: imdbid={imdb_id}, tags={search_tags}, season={season}, episode={episode}"
+                )
+
             if not search_criteria:
                 logger.trace("Skipping OpenSubtitles search: no valid search criteria")
                 return []
