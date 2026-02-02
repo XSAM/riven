@@ -10,6 +10,7 @@ This provider uses the modern OpenSubtitles.com REST API (v1) which provides:
 import time
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import urlparse
 
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -19,6 +20,13 @@ from program.utils.request import SmartSession
 
 from .base import SubtitleItem, SubtitleProvider
 from .opensubtitles import normalize_language_to_alpha3
+
+# Whitelist of allowed domains for subtitle download URLs (SSRF prevention)
+ALLOWED_DOWNLOAD_DOMAINS = {
+    "dl.opensubtitles.com",
+    "www.opensubtitles.com",
+    "vip.opensubtitles.com",
+}
 
 
 class OpenSubtitlesLoginResponse(BaseModel):
@@ -46,7 +54,7 @@ class OpenSubtitlesSearchResult(BaseModel):
     def subtitle_id(self) -> str:
         """Get the file ID for downloading."""
         files = self.attributes.get("files", [])
-        if files and isinstance(files, list) and len(files) > 0:
+        if files:
             return str(files[0].get("file_id", self.id))
         return self.id
 
@@ -59,7 +67,7 @@ class OpenSubtitlesSearchResult(BaseModel):
     def filename(self) -> str:
         """Get the subtitle filename."""
         files = self.attributes.get("files", [])
-        if files and isinstance(files, list) and len(files) > 0:
+        if files:
             return files[0].get("file_name", "")
         return ""
 
@@ -90,7 +98,7 @@ class OpenSubtitlesComProvider(SubtitleProvider):
     """
 
     API_BASE = "https://api.opensubtitles.com/api/v1"
-    TOKEN_EXPIRY_SECONDS = 600  # 10 minutes (conservative)
+    TOKEN_EXPIRY_SECONDS = 540  # 9 minutes (with 1-minute safety buffer)
 
     def __init__(self, config: OpenSubtitlesComConfig) -> None:
         """Initialize provider with configuration."""
@@ -99,11 +107,21 @@ class OpenSubtitlesComProvider(SubtitleProvider):
         self.token_time: float = 0.0
 
         # SmartSession provides: rate limiting, circuit breaker, retries
+        # Rate: 2 req/sec for authenticated users (API allows higher)
         self.session = SmartSession(
-            rate_limits={"api.opensubtitles.com": {"rate": 1, "capacity": 5}}
+            rate_limits={"api.opensubtitles.com": {"rate": 2, "capacity": 10}}
         )
 
         logger.debug("OpenSubtitles.com provider initialized")
+
+    def close(self) -> None:
+        """Clean up HTTP session resources."""
+        if self.session:
+            try:
+                self.session.close()
+                logger.debug("OpenSubtitles.com session closed")
+            except Exception as e:
+                logger.warning(f"Error closing OpenSubtitles.com session: {e}")
 
     @property
     def name(self) -> str:
@@ -248,8 +266,8 @@ class OpenSubtitlesComProvider(SubtitleProvider):
 
         # Strategy 2: IMDB ID with season/episode
         if imdb_id:
-            # Strip 'tt' prefix if present
-            imdb_num = imdb_id.lstrip("tt") if imdb_id.startswith("tt") else imdb_id
+            # Strip 'tt' prefix if present (use slice, not lstrip which removes all 't' chars)
+            imdb_num = imdb_id[2:] if imdb_id.startswith("tt") else imdb_id
             params: dict[str, Any] = {
                 "imdb_id": imdb_num,
                 "languages": lang_code,
@@ -316,10 +334,18 @@ class OpenSubtitlesComProvider(SubtitleProvider):
     def _score_results(
         self, results: list[dict[str, Any]], match_type: str
     ) -> list[SubtitleItem]:
-        """Convert and score search results."""
+        """
+        Convert and score search results.
+
+        Score weights prioritize match accuracy:
+        - hash (10000): File hash match is most reliable
+        - imdb (5000): IMDB ID match is good but less precise
+        - filename (1000): Text search is least reliable
+        Additional points from popularity (downloads/100) and rating (rating*10).
+        """
         scored: list[SubtitleItem] = []
 
-        # Score weights by match type
+        # Score weights by match type (higher = more reliable match)
         match_scores = {"hash": 10000, "imdb": 5000, "filename": 1000}
         base_score = match_scores.get(match_type, 0)
 
@@ -394,6 +420,23 @@ class OpenSubtitlesComProvider(SubtitleProvider):
                 logger.error("No download link in response")
                 return None
 
+            # Validate download URL to prevent SSRF attacks
+            parsed_url = urlparse(download_link)
+            if not parsed_url.hostname:
+                logger.error("Download link has no hostname")
+                return None
+
+            hostname_lower = parsed_url.hostname.lower()
+            if hostname_lower not in ALLOWED_DOWNLOAD_DOMAINS:
+                logger.error(
+                    f"Download link from unauthorized domain: {parsed_url.hostname}"
+                )
+                return None
+
+            if parsed_url.scheme != "https":
+                logger.error(f"Download link uses non-HTTPS scheme: {parsed_url.scheme}")
+                return None
+
             # Step 2: Fetch actual subtitle file
             file_response = self.session.get(
                 download_link,
@@ -416,20 +459,19 @@ class OpenSubtitlesComProvider(SubtitleProvider):
         """
         Decode subtitle content with encoding fallbacks.
 
-        Most subtitles are UTF-8 (>95%). Try UTF-8 variants first,
-        then fall back to latin-1 which accepts all byte sequences.
+        Most subtitles are UTF-8 (>95%). Check for BOM first,
+        then try UTF-8, then fall back to latin-1 which accepts all bytes.
         """
-        # Fast path: UTF-8 (most common)
+        # Check for UTF-8 BOM first (optimization)
+        if content.startswith(b"\xef\xbb\xbf"):
+            try:
+                return content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                pass
+
+        # Fast path: UTF-8 (most common, >95% of subtitles)
         try:
             decoded = content.decode("utf-8")
-            if decoded.strip():
-                return decoded
-        except UnicodeDecodeError:
-            pass
-
-        # UTF-8 with BOM
-        try:
-            decoded = content.decode("utf-8-sig")
             if decoded.strip():
                 return decoded
         except UnicodeDecodeError:

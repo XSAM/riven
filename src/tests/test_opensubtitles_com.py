@@ -323,6 +323,35 @@ class TestOpenSubtitlesComProvider:
         results = provider.search_subtitles(imdb_id="tt1234567", language="en")
         assert results == []
 
+    def test_imdb_id_stripping_preserves_leading_zeros(self, mock_config, requests_mock):
+        """IMDB ID stripping should use slice, not lstrip (which removes all 't' chars)."""
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/login",
+            json={"token": "test_token"},
+        )
+
+        provider = OpenSubtitlesComProvider(mock_config)
+
+        # Test that slice-based stripping works correctly
+        # lstrip("tt") would incorrectly turn "ttt0123456" into "0123456" (3 t's removed)
+        # slice [2:] correctly returns "t0123456"
+        strategies = provider._build_search_strategies(
+            video_hash=None,
+            file_size=None,
+            imdb_id="ttt0123456",  # Edge case: triple t
+            filename=None,
+            season=None,
+            episode=None,
+            lang_code="eng",
+        )
+
+        # Should have one IMDB strategy
+        imdb_strategy = next((s for s in strategies if s["name"] == "imdb"), None)
+        assert imdb_strategy is not None
+        # With slice [2:], "ttt0123456" becomes "t0123456" (correct)
+        # With lstrip("tt"), it would become "0123456" (wrong - removes all leading t's)
+        assert imdb_strategy["params"]["imdb_id"] == "t0123456"
+
     def test_search_rate_limited(self, mock_config, requests_mock):
         """429 during search should return empty list."""
         requests_mock.post(
@@ -383,6 +412,90 @@ class TestOpenSubtitlesComProvider:
             "https://api.opensubtitles.com/api/v1/download",
             status_code=429,
             json={"remaining": 0},
+        )
+
+        provider = OpenSubtitlesComProvider(mock_config)
+        subtitle_info = SubtitleItem(
+            id="12345",
+            language="en",
+            filename="test.srt",
+            download_count=100,
+            rating=8.0,
+            matched_by="hash",
+            movie_hash=None,
+            movie_name=None,
+            provider="opensubtitles_com",
+            score=100,
+        )
+
+        content = provider.download_subtitle(subtitle_info)
+        assert content is None
+
+    def test_download_rejects_unauthorized_domain(self, mock_config, requests_mock):
+        """Downloads from unauthorized domains should be rejected (SSRF prevention)."""
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/login",
+            json={"token": "test_token"},
+        )
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/download",
+            json={"link": "http://malicious-server.com/steal-data"},
+        )
+
+        provider = OpenSubtitlesComProvider(mock_config)
+        subtitle_info = SubtitleItem(
+            id="12345",
+            language="en",
+            filename="test.srt",
+            download_count=100,
+            rating=8.0,
+            matched_by="hash",
+            movie_hash=None,
+            movie_name=None,
+            provider="opensubtitles_com",
+            score=100,
+        )
+
+        content = provider.download_subtitle(subtitle_info)
+        assert content is None
+
+    def test_download_rejects_http_scheme(self, mock_config, requests_mock):
+        """Downloads using HTTP (non-HTTPS) should be rejected."""
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/login",
+            json={"token": "test_token"},
+        )
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/download",
+            json={"link": "http://dl.opensubtitles.com/file.srt"},
+        )
+
+        provider = OpenSubtitlesComProvider(mock_config)
+        subtitle_info = SubtitleItem(
+            id="12345",
+            language="en",
+            filename="test.srt",
+            download_count=100,
+            rating=8.0,
+            matched_by="hash",
+            movie_hash=None,
+            movie_name=None,
+            provider="opensubtitles_com",
+            score=100,
+        )
+
+        content = provider.download_subtitle(subtitle_info)
+        assert content is None
+
+    def test_download_rejects_internal_address(self, mock_config, requests_mock):
+        """Downloads from internal addresses should be rejected (SSRF prevention)."""
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/login",
+            json={"token": "test_token"},
+        )
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/download",
+            json={"link": "https://localhost:8080/admin"},
         )
 
         provider = OpenSubtitlesComProvider(mock_config)

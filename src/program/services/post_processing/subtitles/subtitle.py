@@ -36,7 +36,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
             return
 
         # Initialize providers
-        self.providers = list[SubtitleProvider]()
+        self.providers: list[SubtitleProvider] = []
         self._initialize_providers()
 
         if not self.providers:
@@ -59,7 +59,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
     def get_key(cls) -> str:
         return "subtitle"
 
-    def _initialize_providers(self):
+    def _initialize_providers(self) -> None:
         """Initialize configured subtitle providers."""
 
         provider_configs = self.settings.providers
@@ -106,7 +106,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
 
         from .providers.opensubtitles import normalize_language_to_alpha3
 
-        valid_languages = list[str]()
+        valid_languages: list[str] = []
 
         for lang_code in language_codes:
             try:
@@ -255,7 +255,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
             Set of ISO 639-3 language codes (e.g., {'eng', 'spa', 'fre'})
         """
 
-        embedded_languages = set[str]()
+        embedded_languages: set[str] = set()
 
         try:
             media_entry = item.media_entry
@@ -295,7 +295,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
             Comma-separated tags string (e.g., "BluRay,ETRG") or None
         """
 
-        tags = list[str]()
+        tags: list[str] = []
 
         try:
             if not (media_entry := item.media_entry) or not media_entry.media_metadata:
@@ -466,7 +466,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
             return
 
         # Search for subtitles across all providers
-        all_results = list[SubtitleItem]()
+        all_results: list[SubtitleItem] = []
 
         for provider in self.providers:
             try:
@@ -629,7 +629,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
         embedded_languages = self._get_embedded_subtitle_languages(item)
 
         # Get already downloaded subtitle languages from database
-        downloaded_languages = set[str]()
+        downloaded_languages: set[str] = set()
 
         try:
             with db_session() as session:
