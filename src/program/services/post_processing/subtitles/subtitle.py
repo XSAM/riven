@@ -191,8 +191,8 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
             # NOT full filenames - see https://trac.opensubtitles.org/opensubtitles/wiki/XMLRPC#Supportedtags
             search_tags = self._build_search_tags(item)
 
-            # Get IMDB ID
-            imdb_id = item.imdb_id
+            # Get IMDB ID (use get_top_imdb_id for episodes to get parent Show's imdb_id)
+            imdb_id = item.get_top_imdb_id()
 
             # Get season/episode info for TV shows
             season = None
