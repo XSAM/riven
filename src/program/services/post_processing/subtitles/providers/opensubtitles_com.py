@@ -230,7 +230,7 @@ class OpenSubtitlesComProvider(SubtitleProvider):
         for strategy in self._build_search_strategies(
             video_hash, file_size, imdb_id, filename, season, episode, lang_code
         ):
-            logger.trace(f"Trying search strategy: {strategy['name']}")
+            logger.trace(f"Trying search strategy: {strategy['name']} with params={strategy['params']}")
             results = self._search(strategy["params"])
             if results:
                 return self._score_results(results, strategy["name"])
