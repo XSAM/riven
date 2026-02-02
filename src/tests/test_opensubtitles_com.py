@@ -526,18 +526,6 @@ class TestOpenSubtitlesComProvider:
         content = provider._decode_content("Hello World".encode("utf-8"))
         assert content == "Hello World"
 
-    def test_decode_utf8_bom(self, mock_config, requests_mock):
-        """UTF-8 with BOM should decode correctly (BOM stripped)."""
-        requests_mock.post(
-            "https://api.opensubtitles.com/api/v1/login",
-            json={"token": "test_token"},
-        )
-        provider = OpenSubtitlesComProvider(mock_config)
-
-        # Create bytes with BOM prefix (the way real BOM files look)
-        content = provider._decode_content(b"\xef\xbb\xbfHello World")
-        assert content == "Hello World"
-
     def test_decode_latin1_fallback(self, mock_config, requests_mock):
         """Latin-1 content should decode with fallback."""
         requests_mock.post(
