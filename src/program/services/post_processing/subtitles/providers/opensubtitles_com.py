@@ -15,26 +15,33 @@ from urllib.parse import urlparse
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from babelfish import Language
+from babelfish import Language, Error as BabelfishError
 
 from program.settings.models import OpenSubtitlesComConfig
 from program.utils.request import SmartSession
 
 from .base import SubtitleItem, SubtitleProvider
 
-# Register subliminal's OpenSubtitles.com converter (if not already registered)
-from babelfish import language_converters
-
-if 'opensubtitlescom' not in language_converters:
-    language_converters.register('opensubtitlescom = subliminal.converters.opensubtitlescom:OpenSubtitlesComConverter')
+# Special language codes that need locale format for OpenSubtitles.com API
+LANGUAGE_CODE_MAP = {
+    "zho": "zh-cn",
+    "chi": "zh-cn",
+    "zh": "zh-cn",
+}
 
 
 def _to_opensubtitlescom(language: str) -> str:
-    """Convert language code to OpenSubtitles.com API format using subliminal's converter."""
+    """Convert language code to OpenSubtitles.com API format."""
+    lang_lower = language.lower()
+
+    # Check special cases first
+    if lang_lower in LANGUAGE_CODE_MAP:
+        return LANGUAGE_CODE_MAP[lang_lower]
+
+    # Convert 3-letter to 2-letter code
     try:
-        return str(Language(language).opensubtitlescom)
-    except Exception:
-        # Fallback: return as-is
+        return str(Language(language).alpha2)
+    except (BabelfishError, ValueError, AttributeError):
         return language
 
 

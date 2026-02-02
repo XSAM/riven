@@ -120,25 +120,20 @@ def requests_mock(monkeypatch):
 
 
 class TestLanguageConversion:
-    """Test language code conversion using subliminal's converter."""
+    """Test language code conversion."""
 
-    def test_alpha3_to_opensubtitlescom(self):
-        """3-letter codes should convert to OpenSubtitles.com format."""
+    def test_alpha3_to_alpha2(self):
+        """3-letter codes should convert to 2-letter codes."""
         assert _to_opensubtitlescom("eng") == "en"
         assert _to_opensubtitlescom("fra") == "fr"
         assert _to_opensubtitlescom("spa") == "es"
         assert _to_opensubtitlescom("deu") == "de"
 
     def test_chinese_codes(self):
-        """Chinese should convert to locale format."""
+        """Chinese should convert to zh-cn locale format."""
         assert _to_opensubtitlescom("zho") == "zh-cn"
-
-    def test_portuguese_brazil(self):
-        """Portuguese Brazil should convert to pt-br."""
-        # Create Language with country code for Brazilian Portuguese
-        from babelfish import Language
-        lang = Language("por", "BR")
-        assert lang.opensubtitlescom == "pt-br"
+        assert _to_opensubtitlescom("chi") == "zh-cn"
+        assert _to_opensubtitlescom("zh") == "zh-cn"
 
     def test_invalid_fallback(self):
         """Invalid codes should return as-is."""
