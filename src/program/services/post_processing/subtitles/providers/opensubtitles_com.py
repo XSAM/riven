@@ -22,11 +22,11 @@ from program.utils.request import SmartSession
 
 from .base import SubtitleItem, SubtitleProvider
 
-# Register subliminal's OpenSubtitles.com converter
-from subliminal.converters.opensubtitlescom import OpenSubtitlesComConverter
+# Register subliminal's OpenSubtitles.com converter (if not already registered)
 from babelfish import language_converters
 
-language_converters.register('opensubtitlescom = subliminal.converters.opensubtitlescom:OpenSubtitlesComConverter')
+if 'opensubtitlescom' not in language_converters:
+    language_converters.register('opensubtitlescom = subliminal.converters.opensubtitlescom:OpenSubtitlesComConverter')
 
 
 def _to_opensubtitlescom(language: str) -> str:
