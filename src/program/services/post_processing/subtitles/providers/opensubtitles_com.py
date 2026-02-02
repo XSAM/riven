@@ -252,13 +252,12 @@ class OpenSubtitlesComProvider(SubtitleProvider):
         strategies: list[dict[str, Any]] = []
 
         # Strategy 1: Hash (most accurate)
-        if video_hash and file_size:
+        if video_hash:
             strategies.append(
                 {
                     "name": "hash",
                     "params": {
                         "moviehash": video_hash,
-                        "moviebytesize": file_size,
                         "languages": lang_code,
                     },
                 }
