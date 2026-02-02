@@ -456,12 +456,5 @@ class OpenSubtitlesComProvider(SubtitleProvider):
             return None
 
     def _decode_content(self, content: bytes) -> str:
-        """
-        Decode subtitle content with encoding fallback.
-
-        Most subtitles are UTF-8. Fall back to latin-1 which accepts all bytes.
-        """
-        try:
-            return content.decode("utf-8")
-        except UnicodeDecodeError:
-            return content.decode("iso-8859-1", errors="replace")
+        """Decode subtitle content as UTF-8."""
+        return content.decode("utf-8")

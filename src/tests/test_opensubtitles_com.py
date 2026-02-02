@@ -526,18 +526,6 @@ class TestOpenSubtitlesComProvider:
         content = provider._decode_content("Hello World".encode("utf-8"))
         assert content == "Hello World"
 
-    def test_decode_latin1_fallback(self, mock_config, requests_mock):
-        """Latin-1 content should decode with fallback."""
-        requests_mock.post(
-            "https://api.opensubtitles.com/api/v1/login",
-            json={"token": "test_token"},
-        )
-        provider = OpenSubtitlesComProvider(mock_config)
-
-        # Latin-1 specific character
-        content = provider._decode_content("Café".encode("latin-1"))
-        assert "Caf" in content
-
     def test_score_calculation(self, mock_config, requests_mock):
         """Results should be scored and sorted correctly."""
         requests_mock.post(
