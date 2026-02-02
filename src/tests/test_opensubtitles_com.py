@@ -16,7 +16,7 @@ from program.services.post_processing.subtitles.providers.opensubtitles_com impo
     OpenSubtitlesComProvider,
     OpenSubtitlesLoginResponse,
     OpenSubtitlesSearchResult,
-    _to_alpha2,
+    _to_opensubtitlescom,
 )
 from program.services.post_processing.subtitles.providers.base import SubtitleItem
 
@@ -120,23 +120,29 @@ def requests_mock(monkeypatch):
 
 
 class TestLanguageConversion:
-    """Test language code conversion."""
+    """Test language code conversion using subliminal's converter."""
 
-    def test_alpha3_to_alpha2(self):
-        """3-letter codes should convert to 2-letter codes."""
-        assert _to_alpha2("eng") == "en"
-        assert _to_alpha2("fra") == "fr"
-        assert _to_alpha2("spa") == "es"
-        assert _to_alpha2("deu") == "de"
+    def test_alpha3_to_opensubtitlescom(self):
+        """3-letter codes should convert to OpenSubtitles.com format."""
+        assert _to_opensubtitlescom("eng") == "en"
+        assert _to_opensubtitlescom("fra") == "fr"
+        assert _to_opensubtitlescom("spa") == "es"
+        assert _to_opensubtitlescom("deu") == "de"
 
-    def test_alpha2_passthrough(self):
-        """2-letter codes should pass through unchanged."""
-        assert _to_alpha2("en") == "en"
-        assert _to_alpha2("fr") == "fr"
+    def test_chinese_codes(self):
+        """Chinese should convert to locale format."""
+        assert _to_opensubtitlescom("zho") == "zh-cn"
+
+    def test_portuguese_brazil(self):
+        """Portuguese Brazil should convert to pt-br."""
+        # Create Language with country code for Brazilian Portuguese
+        from babelfish import Language
+        lang = Language("por", "BR")
+        assert lang.opensubtitlescom == "pt-br"
 
     def test_invalid_fallback(self):
         """Invalid codes should return as-is."""
-        assert _to_alpha2("xyz") == "xyz"
+        assert _to_opensubtitlescom("xyz") == "xyz"
 
 
 class TestOpenSubtitlesLoginResponse:

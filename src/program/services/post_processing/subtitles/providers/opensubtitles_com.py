@@ -15,20 +15,26 @@ from urllib.parse import urlparse
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from babelfish import Language, Error as BabelfishError
+from babelfish import Language
 
 from program.settings.models import OpenSubtitlesComConfig
 from program.utils.request import SmartSession
 
 from .base import SubtitleItem, SubtitleProvider
 
+# Register subliminal's OpenSubtitles.com converter
+from subliminal.converters.opensubtitlescom import OpenSubtitlesComConverter
+from babelfish import language_converters
 
-def _to_alpha2(language: str) -> str:
-    """Convert ISO 639-3 (3-letter) to ISO 639-1 (2-letter) language code."""
+language_converters.register('opensubtitlescom = subliminal.converters.opensubtitlescom:OpenSubtitlesComConverter')
+
+
+def _to_opensubtitlescom(language: str) -> str:
+    """Convert language code to OpenSubtitles.com API format using subliminal's converter."""
     try:
-        return str(Language(language).alpha2)
-    except (BabelfishError, ValueError, AttributeError):
-        # Fallback: return as-is if already 2-letter or conversion fails
+        return str(Language(language).opensubtitlescom)
+    except Exception:
+        # Fallback: return as-is
         return language
 
 
@@ -236,7 +242,7 @@ class OpenSubtitlesComProvider(SubtitleProvider):
             return []
 
         # Convert to 2-letter code (API uses ISO 639-1)
-        lang_code = _to_alpha2(language)
+        lang_code = _to_opensubtitlescom(language)
 
         # Build search strategies in priority order
         for strategy in self._build_search_strategies(
