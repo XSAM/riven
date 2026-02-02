@@ -361,7 +361,6 @@ class TestOpenSubtitlesComProvider:
         requests_mock.get(
             "https://api.opensubtitles.com/api/v1/subtitles",
             status_code=429,
-            headers={"Retry-After": "60"},
             json={"error": "Rate limited"},
         )
 
