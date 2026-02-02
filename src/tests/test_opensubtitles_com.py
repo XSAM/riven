@@ -353,7 +353,7 @@ class TestOpenSubtitlesComProvider:
         assert imdb_strategy["params"]["imdb_id"] == "t0123456"
 
     def test_search_rate_limited(self, mock_config, requests_mock):
-        """429 during search should return empty list."""
+        """429 during search should return empty list after retries."""
         requests_mock.post(
             "https://api.opensubtitles.com/api/v1/login",
             json={"token": "test_token"},
@@ -361,6 +361,7 @@ class TestOpenSubtitlesComProvider:
         requests_mock.get(
             "https://api.opensubtitles.com/api/v1/subtitles",
             status_code=429,
+            headers={"Retry-After": "1"},  # Short delay for testing
             json={"error": "Rate limited"},
         )
 
