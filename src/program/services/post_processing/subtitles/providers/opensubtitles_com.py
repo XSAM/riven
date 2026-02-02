@@ -15,8 +15,7 @@ from urllib.parse import urlparse
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from babelfish import Language
-from babelfish.exceptions import BabelfishError
+from babelfish import Language, Error as BabelfishError
 
 from program.settings.models import OpenSubtitlesComConfig
 from program.utils.request import SmartSession
