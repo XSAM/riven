@@ -15,10 +15,23 @@ from urllib.parse import urlparse
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from babelfish import Language
+from babelfish.exceptions import BabelfishError
+
 from program.settings.models import OpenSubtitlesComConfig
 from program.utils.request import SmartSession
 
 from .base import SubtitleItem, SubtitleProvider
+
+
+def _to_alpha2(language: str) -> str:
+    """Convert ISO 639-3 (3-letter) to ISO 639-1 (2-letter) language code."""
+    try:
+        return str(Language(language).alpha2)
+    except (BabelfishError, ValueError, AttributeError):
+        # Fallback: return as-is if already 2-letter or conversion fails
+        return language
+
 
 # Whitelist of allowed domains for subtitle download URLs (SSRF prevention)
 ALLOWED_DOWNLOAD_DOMAINS = {
@@ -223,16 +236,19 @@ class OpenSubtitlesComProvider(SubtitleProvider):
             logger.error("OpenSubtitles.com authentication failed")
             return []
 
+        # Convert to 2-letter code (API uses ISO 639-1)
+        lang_code = _to_alpha2(language)
+
         # Build search strategies in priority order
         for strategy in self._build_search_strategies(
-            video_hash, file_size, imdb_id, filename, season, episode, language
+            video_hash, file_size, imdb_id, filename, season, episode, lang_code
         ):
             logger.trace(f"Trying search strategy: {strategy['name']} with params={strategy['params']}")
             results = self._search(strategy["params"])
             if results:
                 return self._score_results(results, strategy["name"])
 
-        logger.debug(f"No subtitles found for language={language}")
+        logger.debug(f"No subtitles found for language={lang_code}")
         return []
 
     def _build_search_strategies(

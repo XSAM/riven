@@ -16,6 +16,7 @@ from program.services.post_processing.subtitles.providers.opensubtitles_com impo
     OpenSubtitlesComProvider,
     OpenSubtitlesLoginResponse,
     OpenSubtitlesSearchResult,
+    _to_alpha2,
 )
 from program.services.post_processing.subtitles.providers.base import SubtitleItem
 
@@ -116,6 +117,26 @@ def requests_mock(monkeypatch):
             _add("POST", url, cfg)
 
     return _Mock()
+
+
+class TestLanguageConversion:
+    """Test language code conversion."""
+
+    def test_alpha3_to_alpha2(self):
+        """3-letter codes should convert to 2-letter codes."""
+        assert _to_alpha2("eng") == "en"
+        assert _to_alpha2("fra") == "fr"
+        assert _to_alpha2("spa") == "es"
+        assert _to_alpha2("deu") == "de"
+
+    def test_alpha2_passthrough(self):
+        """2-letter codes should pass through unchanged."""
+        assert _to_alpha2("en") == "en"
+        assert _to_alpha2("fr") == "fr"
+
+    def test_invalid_fallback(self):
+        """Invalid codes should return as-is."""
+        assert _to_alpha2("xyz") == "xyz"
 
 
 class TestOpenSubtitlesLoginResponse:
