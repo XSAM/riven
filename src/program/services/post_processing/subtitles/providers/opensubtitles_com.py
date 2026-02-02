@@ -18,70 +18,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from program.settings.models import OpenSubtitlesComConfig
 from program.utils.request import SmartSession
 
-from babelfish import Language
-from babelfish.exceptions import BabelfishError
-
 from .base import SubtitleItem, SubtitleProvider
-
-
-def normalize_language_to_alpha2(language: str) -> str:
-    """
-    Convert language code to ISO 639-1 (2-letter code) for OpenSubtitles.com API.
-
-    The REST API uses 2-letter codes like 'en', 'fr' (not 3-letter 'eng', 'fra').
-
-    Args:
-        language: Language code in various formats
-
-    Returns:
-        ISO 639-1 language code (e.g., 'en', 'es', 'fr')
-    """
-    try:
-        language_str = str(language).strip().lower()
-
-        if not language_str:
-            logger.warning("Empty language code provided, defaulting to 'en'")
-            return "en"
-
-        lang_obj = None
-
-        # Strategy 1: Try as ISO 639-3 (3-letter code)
-        if len(language_str) == 3:
-            try:
-                lang_obj = Language(language_str)
-            except (BabelfishError, ValueError):
-                try:
-                    lang_obj = Language.fromcode(language_str, "alpha3b")
-                except (BabelfishError, ValueError, KeyError):
-                    pass
-
-        # Strategy 2: Try as ISO 639-1 (2-letter code)
-        if lang_obj is None and len(language_str) == 2:
-            try:
-                lang_obj = Language.fromcode(language_str, "alpha2")
-            except (BabelfishError, ValueError, KeyError):
-                pass
-
-        # Strategy 3: Try parsing as locale string (e.g., 'en-US', 'pt_BR')
-        if lang_obj is None and ("-" in language_str or "_" in language_str):
-            try:
-                lang_part = language_str.split("-")[0].split("_")[0]
-                if len(lang_part) == 2:
-                    lang_obj = Language.fromcode(lang_part, "alpha2")
-                elif len(lang_part) == 3:
-                    lang_obj = Language(lang_part)
-            except (BabelfishError, ValueError, KeyError):
-                pass
-
-        if lang_obj:
-            return str(lang_obj.alpha2)
-
-        logger.warning(f"Could not parse language '{language}', defaulting to 'en'")
-        return "en"
-
-    except Exception as e:
-        logger.error(f"Error normalizing language '{language}': {e}, defaulting to 'en'")
-        return "en"
 
 # Whitelist of allowed domains for subtitle download URLs (SSRF prevention)
 ALLOWED_DOWNLOAD_DOMAINS = {
@@ -286,18 +223,16 @@ class OpenSubtitlesComProvider(SubtitleProvider):
             logger.error("OpenSubtitles.com authentication failed")
             return []
 
-        lang_code = normalize_language_to_alpha2(language)
-
         # Build search strategies in priority order
         for strategy in self._build_search_strategies(
-            video_hash, file_size, imdb_id, filename, season, episode, lang_code
+            video_hash, file_size, imdb_id, filename, season, episode, language
         ):
             logger.trace(f"Trying search strategy: {strategy['name']} with params={strategy['params']}")
             results = self._search(strategy["params"])
             if results:
                 return self._score_results(results, strategy["name"])
 
-        logger.debug(f"No subtitles found for language={lang_code}")
+        logger.debug(f"No subtitles found for language={language}")
         return []
 
     def _build_search_strategies(

@@ -342,7 +342,7 @@ class TestOpenSubtitlesComProvider:
             filename=None,
             season=None,
             episode=None,
-            lang_code="eng",
+            lang_code="en",
         )
 
         # Should have one IMDB strategy
