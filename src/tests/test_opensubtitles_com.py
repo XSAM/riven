@@ -352,6 +352,37 @@ class TestOpenSubtitlesComProvider:
         # With lstrip("tt"), it would become "0123456" (wrong - removes all leading t's)
         assert imdb_strategy["params"]["imdb_id"] == "t0123456"
 
+    def test_query_params_added_to_strategies(self, requests_mock):
+        """User-configured query_params should be added to all search strategies."""
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/login",
+            json={"token": "test_token"},
+        )
+
+        config = OpenSubtitlesComConfig(
+            enabled=True,
+            api_key="test_api_key_1234567890123456789012345",
+            username="testuser",
+            password="testpass",
+            query_params={"foreign_parts_only": "include", "hearing_impaired": "exclude"},
+        )
+        provider = OpenSubtitlesComProvider(config)
+
+        strategies = provider._build_search_strategies(
+            video_hash="abc123",
+            file_size=None,
+            imdb_id="tt1234567",
+            filename="Movie.2024.mkv",
+            season=None,
+            episode=None,
+            lang_code="en",
+        )
+
+        # All strategies should have the query_params
+        for strategy in strategies:
+            assert strategy["params"]["foreign_parts_only"] == "include"
+            assert strategy["params"]["hearing_impaired"] == "exclude"
+
     def test_search_rate_limited(self, mock_config, requests_mock):
         """429 during search should return empty list after retries."""
         requests_mock.post(

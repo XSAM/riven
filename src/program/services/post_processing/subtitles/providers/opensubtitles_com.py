@@ -283,6 +283,11 @@ class OpenSubtitlesComProvider(SubtitleProvider):
                 params["episode_number"] = episode
             strategies.append({"name": "filename", "params": params})
 
+        # Add user-configured query params to all strategies
+        if self.config.query_params:
+            for strategy in strategies:
+                strategy["params"].update(self.config.query_params)
+
         return strategies
 
     def _search(self, params: dict[str, Any]) -> list[dict[str, Any]]:

@@ -867,6 +867,10 @@ class OpenSubtitlesComConfig(Observable):
     password: str = Field(
         default="", description="Password for authenticated downloads"
     )
+    query_params: dict[str, str] = Field(
+        default_factory=dict,
+        description="Additional query parameters for subtitle search (e.g., foreign_parts_only, hearing_impaired)",
+    )
 
 
 class SubtitleProvidersDict(Observable):
