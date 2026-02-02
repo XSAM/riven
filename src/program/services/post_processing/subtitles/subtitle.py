@@ -18,7 +18,6 @@ from program.services.post_processing.subtitles.providers.base import (
     SubtitleProvider,
 )
 from program.core.analysis_service import AnalysisService
-from .providers.opensubtitles import OpenSubtitlesProvider
 from .utils import calculate_opensubtitles_hash
 
 
@@ -43,11 +42,10 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
             logger.warning("No subtitle providers initialized")
             return
 
-        # Parse language codes
-        self.languages = self._parse_languages(self.settings.languages)
+        self.languages = self.settings.languages
 
         if not self.languages:
-            logger.warning("No valid languages configured for subtitles")
+            logger.warning("No languages configured for subtitles")
             return
 
         self.initialized = True
@@ -64,15 +62,6 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
 
         provider_configs = self.settings.providers
 
-        # Initialize OpenSubtitles XML-RPC provider (legacy)
-        if provider_configs.opensubtitles.enabled:
-            try:
-                provider = OpenSubtitlesProvider()
-                self.providers.append(provider)
-                logger.debug("OpenSubtitles XML-RPC provider initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize OpenSubtitles provider: {e}")
-
         # Initialize OpenSubtitles.com REST API provider
         if provider_configs.opensubtitles_com.enabled:
             config = provider_configs.opensubtitles_com
@@ -86,49 +75,11 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
 
                     provider = OpenSubtitlesComProvider(config)
                     self.providers.append(provider)
-                    logger.debug("OpenSubtitles.com REST provider initialized")
+                    logger.debug("OpenSubtitles.com provider initialized")
                 except Exception as e:
                     logger.error(
                         f"Failed to initialize OpenSubtitles.com provider: {e}"
                     )
-
-    @classmethod
-    def _parse_languages(cls, language_codes: list[str]) -> list[str]:
-        """
-        Parse and validate language codes.
-
-        Args:
-            language_codes: list of language codes (ISO 639-1, ISO 639-2, or ISO 639-3)
-
-        Returns:
-            list of valid ISO 639-3 language codes
-        """
-
-        from .providers.opensubtitles import normalize_language_to_alpha3
-
-        valid_languages: list[str] = []
-
-        for lang_code in language_codes:
-            try:
-                normalized = normalize_language_to_alpha3(lang_code)
-
-                if (
-                    normalized
-                    and normalized != "eng"
-                    or lang_code.lower() in ["en", "eng"]
-                ):
-                    valid_languages.append(normalized)
-                elif normalized == "eng" and lang_code.lower() not in ["en", "eng"]:
-                    # Only add 'eng' if it was explicitly requested
-                    logger.warning(
-                        f"Language code '{lang_code}' normalized to 'eng' (fallback)"
-                    )
-                else:
-                    valid_languages.append(normalized)
-            except Exception as e:
-                logger.error(f"Failed to parse language code '{lang_code}': {e}")
-
-        return list(set(valid_languages))  # Remove duplicates
 
     @property
     def enabled(self) -> bool:
@@ -646,7 +597,7 @@ class SubtitleService(AnalysisService[SubtitleConfig]):
         available_languages = embedded_languages | downloaded_languages
 
         # Check if any wanted language is missing
-        languages = self._parse_languages(language_codes=self.settings.languages)
+        languages = self.settings.languages
 
         missing_languages = set(languages) - available_languages
 

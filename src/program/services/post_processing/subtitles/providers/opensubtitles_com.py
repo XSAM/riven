@@ -15,35 +15,10 @@ from urllib.parse import urlparse
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from babelfish import Language, Error as BabelfishError
-
 from program.settings.models import OpenSubtitlesComConfig
 from program.utils.request import SmartSession
 
 from .base import SubtitleItem, SubtitleProvider
-
-# Special language codes that need locale format for OpenSubtitles.com API
-LANGUAGE_CODE_MAP = {
-    "zho": "zh-cn",
-    "chi": "zh-cn",
-    "zh": "zh-cn",
-}
-
-
-def _to_opensubtitlescom(language: str) -> str:
-    """Convert language code to OpenSubtitles.com API format."""
-    lang_lower = language.lower()
-
-    # Check special cases first
-    if lang_lower in LANGUAGE_CODE_MAP:
-        return LANGUAGE_CODE_MAP[lang_lower]
-
-    # Convert 3-letter to 2-letter code
-    try:
-        return str(Language(language).alpha2)
-    except (BabelfishError, ValueError, AttributeError):
-        return language
-
 
 # Whitelist of allowed domains for subtitle download URLs (SSRF prevention)
 ALLOWED_DOWNLOAD_DOMAINS = {
@@ -248,19 +223,16 @@ class OpenSubtitlesComProvider(SubtitleProvider):
             logger.error("OpenSubtitles.com authentication failed")
             return []
 
-        # Convert to 2-letter code (API uses ISO 639-1)
-        lang_code = _to_opensubtitlescom(language)
-
         # Build search strategies in priority order
         for strategy in self._build_search_strategies(
-            video_hash, file_size, imdb_id, filename, season, episode, lang_code
+            video_hash, file_size, imdb_id, filename, season, episode, language
         ):
             logger.trace(f"Trying search strategy: {strategy['name']} with params={strategy['params']}")
             results = self._search(strategy["params"])
             if results:
                 return self._score_results(results, strategy["name"])
 
-        logger.debug(f"No subtitles found for language={lang_code}")
+        logger.debug(f"No subtitles found for language={language}")
         return []
 
     def _build_search_strategies(
