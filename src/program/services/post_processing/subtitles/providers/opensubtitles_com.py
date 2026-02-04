@@ -131,7 +131,7 @@ class OpenSubtitlesComProvider(SubtitleProvider):
         """Build headers for API requests."""
         headers = {
             "Api-Key": self.config.api_key,
-            "User-Agent": "Riven/1.0",
+            "User-Agent": self.config.user_agent,
             "Content-Type": "application/json",
         }
         if authenticated and self.token:

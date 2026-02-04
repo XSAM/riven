@@ -383,6 +383,25 @@ class TestOpenSubtitlesComProvider:
             assert strategy["params"]["foreign_parts_only"] == "include"
             assert strategy["params"]["hearing_impaired"] == "exclude"
 
+    def test_custom_user_agent(self, requests_mock):
+        """User-configured user_agent should be used in API requests."""
+        requests_mock.post(
+            "https://api.opensubtitles.com/api/v1/login",
+            json={"token": "test_token"},
+        )
+
+        config = OpenSubtitlesComConfig(
+            enabled=True,
+            api_key="test_api_key_1234567890123456789012345",
+            username="testuser",
+            password="testpass",
+            user_agent="MyApp/2.0",
+        )
+        provider = OpenSubtitlesComProvider(config)
+
+        headers = provider._headers()
+        assert headers["User-Agent"] == "MyApp/2.0"
+
     def test_search_rate_limited(self, mock_config, requests_mock):
         """429 during search should return empty list after retries."""
         requests_mock.post(

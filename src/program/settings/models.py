@@ -871,6 +871,10 @@ class OpenSubtitlesComConfig(Observable):
         default_factory=dict,
         description="Additional query parameters for subtitle search (e.g., foreign_parts_only, hearing_impaired)",
     )
+    user_agent: str = Field(
+        default="Riven/1.0",
+        description="User-Agent header for API requests",
+    )
 
 
 class SubtitleProvidersDict(Observable):
