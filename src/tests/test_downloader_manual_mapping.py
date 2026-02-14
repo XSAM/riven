@@ -149,7 +149,10 @@ def test_start_manual_download_movie_uses_selected_file_and_updates_attributes()
     downloader = Downloader()
     service = SimpleNamespace(key="mockdebrid")
     movie = _build_movie()
-    stream = _build_stream("Example.Movie.2024.1080p.WEB-DL.mkv", "moviehash123")
+    stream = _build_stream(
+        "Example.Movie.2024.1080p.WEB-DL.mkv",
+        "0123456789abcdef0123456789abcdef01234567",
+    )
 
     movie_file = DebridFile(
         file_id=1,
@@ -197,7 +200,7 @@ def test_start_manual_download_movie_uses_selected_file_and_updates_attributes()
     assert movie.filesystem_entry is not None
     assert movie.filesystem_entry.download_url == "https://example.test/file/1"
     assert movie.active_stream is not None
-    assert movie.active_stream.infohash == "moviehash123"
+    assert movie.active_stream.infohash == "0123456789abcdef0123456789abcdef01234567"
     assert movie.last_state == States.Downloaded
 
 
@@ -205,7 +208,10 @@ def test_start_manual_download_movie_fails_when_selected_file_is_not_movie_match
     downloader = Downloader()
     service = SimpleNamespace(key="mockdebrid")
     movie = _build_movie()
-    stream = _build_stream("Example.Movie.2024.1080p.WEB-DL.mkv", "moviehash456")
+    stream = _build_stream(
+        "Example.Movie.2024.1080p.WEB-DL.mkv",
+        "89abcdef0123456789abcdef0123456789abcdef",
+    )
 
     episode_like_file = DebridFile(
         file_id=7,
