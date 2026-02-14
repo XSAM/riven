@@ -887,6 +887,7 @@ async def session_action(
         with db_session() as session:
             item = resolve_media_item(
                 session=session,
+                item_id=scraping_session.item_id,
                 tmdb_id=scraping_session.tmdb_id,
                 tvdb_id=scraping_session.tvdb_id,
                 imdb_id=scraping_session.imdb_id,
@@ -937,6 +938,7 @@ async def session_action(
                 stream=stream,
                 service=downloader.service, # Use primary service
                 file_ids=file_ids,
+                episode_file_map=data.root if isinstance(data, ShowFileData) else None,
             )
             
             if not success:

@@ -322,6 +322,7 @@ class Downloader(Runner[None, DownloaderBase]):
         item: MediaItem,
         download_result: DownloadedTorrent,
         service: DownloaderBase | None = None,
+        episode_file_map: dict[int, dict[int, DebridFile]] | None = None,
     ) -> bool:
         """Update the item attributes with the downloaded files and active stream."""
 
@@ -336,6 +337,10 @@ class Downloader(Runner[None, DownloaderBase]):
 
             episode_cap: int | None = None
             show: Show | None = None
+            use_explicit_episode_map = bool(
+                episode_file_map and isinstance(item, (Show, Season, Episode))
+            )
+            explicit_targets_by_file_id: dict[int, list[tuple[Episode, DebridFile]]] = {}
 
             if isinstance(item, (Show, Season, Episode)):
                 show = item.top_parent
@@ -353,13 +358,79 @@ class Downloader(Runner[None, DownloaderBase]):
                 except Exception as e:
                     pass
 
+            if use_explicit_episode_map and show and episode_file_map:
+                for season_number, episodes in episode_file_map.items():
+                    for episode_number, requested_file in episodes.items():
+                        if requested_file.file_id is None:
+                            continue
+
+                        episode = show.get_absolute_episode(episode_number, season_number)
+                        if not episode:
+                            logger.debug(
+                                f"Manual mapping target S{season_number}E{episode_number} not found in {show.log_string}"
+                            )
+                            continue
+
+                        explicit_targets_by_file_id.setdefault(
+                            requested_file.file_id,
+                            [],
+                        ).append((episode, requested_file))
+
             found = False
             files = download_result.container.files
 
             # Track episodes we've already processed to avoid duplicates
             processed_episode_ids = set[str]()
+            seen_file_ids = set[int]()
 
             for file in files:
+                if (
+                    use_explicit_episode_map
+                    and isinstance(item, (Show, Season, Episode))
+                ):
+                    if file.file_id is None:
+                        continue
+
+                    seen_file_ids.add(file.file_id)
+
+                    targets = explicit_targets_by_file_id.get(file.file_id, [])
+                    for episode, requested_file in targets:
+                        if str(episode.id) in processed_episode_ids:
+                            continue
+
+                        if episode.filesystem_entry:
+                            logger.debug(
+                                f"Episode {episode.log_string} already has filesystem_entry; skipping"
+                            )
+                            continue
+
+                        if episode.state in [
+                            States.Completed,
+                            States.Symlinked,
+                            States.Downloaded,
+                        ]:
+                            logger.debug(
+                                f"Manual mapping skipped for {episode.log_string}: already in terminal state {episode.state}"
+                            )
+                            continue
+
+                        # Preserve explicit download URL sent by UI if container file lacks it.
+                        if not file.download_url and requested_file.download_url:
+                            file.download_url = requested_file.download_url
+
+                        self._update_attributes(
+                            episode,
+                            file,
+                            download_result,
+                            service,
+                            None,
+                        )
+                        processed_episode_ids.add(str(episode.id))
+                        found = True
+
+                    # Explicit mapping for shows does not fall back to filename parsing.
+                    continue
+
                 try:
                     assert file.filename
 
@@ -386,6 +457,19 @@ class Downloader(Runner[None, DownloaderBase]):
                     service,
                 ):
                     found = True
+
+            if use_explicit_episode_map:
+                missing_file_ids = set(explicit_targets_by_file_id.keys()) - seen_file_ids
+                for missing_file_id in sorted(missing_file_ids):
+                    logger.debug(
+                        f"Manual mapping file_id={missing_file_id} not found in container for {item.log_string}"
+                    )
+
+                if found and isinstance(item, (Show, Season)):
+                    item.active_stream = ActiveStream(
+                        infohash=download_result.infohash,
+                        id=download_result.info.id,
+                    )
 
             return found
         except Exception as e:
@@ -585,11 +669,10 @@ class Downloader(Runner[None, DownloaderBase]):
         if service is None:
             service = self.service
 
-        if file_data:
-            item.active_stream = ActiveStream(
-                infohash=download_result.infohash,
-                id=download_result.info.id,
-            )
+        item.active_stream = ActiveStream(
+            infohash=download_result.infohash,
+            id=download_result.info.id,
+        )
 
         # Create MediaEntry for virtual file if download URL is available
         if debrid_file.download_url:
@@ -699,13 +782,14 @@ class Downloader(Runner[None, DownloaderBase]):
         stream: Stream,
         service: DownloaderBase,
         file_ids: list[int] | None = None,
+        episode_file_map: dict[int, dict[int, DebridFile]] | None = None,
     ) -> bool:
         """
         Manually start a download for a specific stream.
         Uses the same pipeline as the standard automated download flow:
         1. validate_stream_on_service (validates and gets TorrentContainer)
         2. download_cached_stream_on_service (adds torrent and gets info)
-        3. update_item_attributes (matches files and sets active_stream)
+        3. update_item_attributes (mapping-aware for manual TV, parse-based otherwise)
         """
         
         # 1. Ensure stream is persisted on item (relationship)
@@ -741,12 +825,21 @@ class Downloader(Runner[None, DownloaderBase]):
             logger.warning(f"START_MANUAL_DOWNLOAD: download_cached_stream_on_service returned None")
             return False
         
-        # 4. Update item attributes (same as standard flow)
-        if self.update_item_attributes(item, result, service):
+        # 4. Update item attributes (mapping-aware for manual TV)
+        if self.update_item_attributes(
+            item,
+            result,
+            service,
+            episode_file_map=episode_file_map,
+        ):
             # Store state - Manual download completes the 'Downloader' phase, so we are now Downloaded
             item.store_state(States.Downloaded)
-            logger.info(f"START_MANUAL_DOWNLOAD: Successfully downloaded {item.log_string} from '{stream.raw_title}'")
+            logger.info(
+                f"START_MANUAL_DOWNLOAD: Successfully downloaded {item.log_string} from '{stream.raw_title}'"
+            )
             return True
-        else:
-            logger.warning(f"START_MANUAL_DOWNLOAD: update_item_attributes failed for {item.log_string}")
-            return False
+
+        logger.warning(
+            f"START_MANUAL_DOWNLOAD: update_item_attributes failed for {item.log_string}"
+        )
+        return False
