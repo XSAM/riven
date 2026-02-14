@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from RTN import ParsedData, Torrent
 from program.media.item import Movie
 from program.media.item import Episode, Season, Show
+from program.media.media_entry import MediaEntry
 from program.media.state import States
 from program.media.stream import Stream
 from program.services.downloaders import Downloader
@@ -143,6 +144,48 @@ def test_update_item_attributes_does_not_fallback_to_filename_parse_when_mapping
     assert success is False
     assert episode_1.filesystem_entry is None
     assert show.active_stream is None
+
+
+def test_update_item_attributes_manual_mapping_noop_is_success_when_episode_already_has_entry():
+    downloader = Downloader()
+    service = SimpleNamespace(key="mockdebrid")
+    show, _, episode_2 = _build_show_tree()
+
+    existing_entry = MediaEntry.create_virtual_entry(
+        original_filename="Existing.Show.S01E02.mkv",
+        download_url="https://example.test/file/existing",
+        provider="mockdebrid",
+        provider_download_id="old",
+        file_size=100,
+    )
+    episode_2.filesystem_entries.append(existing_entry)
+
+    container_file = DebridFile(
+        file_id=10,
+        filename="totally-random-file-name.mkv",
+        filesize=1_000_000_000,
+        download_url="https://example.test/file/10",
+    )
+    requested_file = DebridFile(
+        file_id=10,
+        filename="ignored-by-explicit-map.mkv",
+        filesize=1_000_000_000,
+        download_url="https://example.test/file/10",
+    )
+
+    result = _build_download_result([container_file])
+    success = downloader.update_item_attributes(
+        item=show,
+        download_result=result,
+        service=service,
+        episode_file_map={1: {2: requested_file}},
+    )
+
+    assert success is True
+    assert episode_2.filesystem_entry is not None
+    assert (
+        episode_2.filesystem_entry.download_url == "https://example.test/file/existing"
+    )
 
 
 def test_start_manual_download_movie_uses_selected_file_and_updates_attributes():

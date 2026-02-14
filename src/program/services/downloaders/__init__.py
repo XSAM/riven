@@ -382,6 +382,7 @@ class Downloader(Runner[None, DownloaderBase]):
             # Track episodes we've already processed to avoid duplicates
             processed_episode_ids = set[str]()
             seen_file_ids = set[int]()
+            manual_noop_matches = False
 
             for file in files:
                 if (
@@ -402,6 +403,8 @@ class Downloader(Runner[None, DownloaderBase]):
                             logger.debug(
                                 f"Episode {episode.log_string} already has filesystem_entry; skipping"
                             )
+                            processed_episode_ids.add(str(episode.id))
+                            manual_noop_matches = True
                             continue
 
                         if episode.state in [
@@ -412,6 +415,8 @@ class Downloader(Runner[None, DownloaderBase]):
                             logger.debug(
                                 f"Manual mapping skipped for {episode.log_string}: already in terminal state {episode.state}"
                             )
+                            processed_episode_ids.add(str(episode.id))
+                            manual_noop_matches = True
                             continue
 
                         # Preserve explicit download URL sent by UI if container file lacks it.
@@ -470,6 +475,12 @@ class Downloader(Runner[None, DownloaderBase]):
                         infohash=download_result.infohash,
                         id=download_result.info.id,
                     )
+
+                if not found and manual_noop_matches:
+                    logger.debug(
+                        f"Manual mapping produced no-op matches for {item.log_string}; treating as success"
+                    )
+                    return True
 
             return found
         except Exception as e:
