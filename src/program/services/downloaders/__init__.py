@@ -382,7 +382,6 @@ class Downloader(Runner[None, DownloaderBase]):
             # Track episodes we've already processed to avoid duplicates
             processed_episode_ids = set[str]()
             seen_file_ids = set[int]()
-            manual_noop_matches = False
 
             for file in files:
                 if (
@@ -399,25 +398,14 @@ class Downloader(Runner[None, DownloaderBase]):
                         if str(episode.id) in processed_episode_ids:
                             continue
 
-                        if episode.filesystem_entry:
-                            logger.debug(
-                                f"Episode {episode.log_string} already has filesystem_entry; skipping"
-                            )
-                            processed_episode_ids.add(str(episode.id))
-                            manual_noop_matches = True
-                            continue
-
-                        if episode.state in [
+                        if episode.filesystem_entry or episode.state in [
                             States.Completed,
                             States.Symlinked,
                             States.Downloaded,
                         ]:
                             logger.debug(
-                                f"Manual mapping skipped for {episode.log_string}: already in terminal state {episode.state}"
+                                f"Manual mapping overriding existing attributes for {episode.log_string}"
                             )
-                            processed_episode_ids.add(str(episode.id))
-                            manual_noop_matches = True
-                            continue
 
                         # Preserve explicit download URL sent by UI if container file lacks it.
                         if not file.download_url and requested_file.download_url:
@@ -475,12 +463,6 @@ class Downloader(Runner[None, DownloaderBase]):
                         infohash=download_result.infohash,
                         id=download_result.info.id,
                     )
-
-                if not found and manual_noop_matches:
-                    logger.debug(
-                        f"Manual mapping produced no-op matches for {item.log_string}; treating as success"
-                    )
-                    return True
 
             return found
         except Exception as e:

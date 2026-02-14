@@ -146,7 +146,7 @@ def test_update_item_attributes_does_not_fallback_to_filename_parse_when_mapping
     assert show.active_stream is None
 
 
-def test_update_item_attributes_manual_mapping_noop_is_success_when_episode_already_has_entry():
+def test_update_item_attributes_manual_mapping_overrides_existing_episode_entry():
     downloader = Downloader()
     service = SimpleNamespace(key="mockdebrid")
     show, _, episode_2 = _build_show_tree()
@@ -183,9 +183,7 @@ def test_update_item_attributes_manual_mapping_noop_is_success_when_episode_alre
 
     assert success is True
     assert episode_2.filesystem_entry is not None
-    assert (
-        episode_2.filesystem_entry.download_url == "https://example.test/file/existing"
-    )
+    assert episode_2.filesystem_entry.download_url == "https://example.test/file/10"
 
 
 def test_start_manual_download_movie_uses_selected_file_and_updates_attributes():
