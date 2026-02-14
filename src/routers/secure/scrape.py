@@ -16,6 +16,7 @@ from kink import di
 from loguru import logger
 from PTT import parse_title  # pyright: ignore[reportUnknownVariableType]
 from pydantic import BaseModel, Json, RootModel
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from program.db import db_functions
@@ -470,6 +471,17 @@ def resolve_media_item(
     
     return item
 
+
+def detach_item_if_bound_to_session(session: Session, item: MediaItem) -> None:
+    """
+    Detach item from the provided session when it is currently bound to it.
+
+    Some fetch helpers return already-detached instances. Expunging those again
+    raises InvalidRequestError, so we guard on SQLAlchemy inspection state.
+    """
+    if sa_inspect(item).session is session:
+        session.expunge(item)
+
 @router.get("/", include_in_schema=False)
 @router.get(
     "",
@@ -574,7 +586,7 @@ def scrape_item(
                     return
                 
                 # Detach item from session to avoid threading issues in scraper
-                session.expunge(item)
+                detach_item_if_bound_to_session(session, item)
                 
                 # Apply custom params to the detached item
                 apply_custom_params(item)
