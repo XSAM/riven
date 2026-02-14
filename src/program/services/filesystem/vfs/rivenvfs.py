@@ -1113,8 +1113,34 @@ class RivenVFS(pyfuse3.Operations):
             existing_node = self._get_node_by_path(clean_path)
 
             if existing_node:
-                logger.trace(f"Path already registered: {clean_path}")
-                return True
+                if isinstance(existing_node, VFSFile):
+                    # If a file is manually remapped to a new debrid file but keeps the same
+                    # VFS path, refresh in-memory node metadata so reads resolve the new entry.
+                    if (
+                        existing_node.original_filename != original_filename
+                        or existing_node.file_size != file_size
+                        or existing_node.created_at != created_at
+                        or existing_node.updated_at != updated_at
+                        or existing_node.entry_type != entry_type
+                    ):
+                        logger.debug(
+                            "Refreshing existing VFS path mapping "
+                            f"{clean_path}: '{existing_node.original_filename}' -> '{original_filename}'"
+                        )
+                        existing_node.original_filename = original_filename
+                        existing_node.file_size = file_size
+                        existing_node.created_at = created_at
+                        existing_node.updated_at = updated_at
+                        existing_node.entry_type = entry_type
+                    else:
+                        logger.trace(f"Path already registered: {clean_path}")
+
+                    return True
+
+                logger.warning(
+                    f"Cannot register file path {clean_path}: existing node is not a file"
+                )
+                return False
 
             # Create node in tree
             node = self._get_or_create_node(
