@@ -791,6 +791,8 @@ class MediaStream:
         backoffs = [0.2, 0.5, 1.0]
 
         for attempt in range(max_attempts):
+            response_yielded = False
+
             try:
                 async with self.async_client.stream(
                     method="GET",
@@ -833,6 +835,7 @@ class MediaStream:
 
                     self.session_statistics.total_session_connections += 1
 
+                    response_yielded = True
                     yield stream
 
                     return
@@ -957,6 +960,25 @@ class MediaStream:
                         )
                     )
 
+                if (
+                    isinstance(e, httpx.TimeoutException)
+                    and not isinstance(e, httpx.PoolTimeout)
+                    and attempt == 0
+                ):
+                    has_fresh_url = await self._refresh_download_url()
+
+                    if has_fresh_url:
+                        logger.warning(
+                            self.build_log_message("URL refresh after timeout")
+                        )
+
+                # A context manager cannot yield a replacement response after the
+                # caller's body read fails, so let the outer recovery path reopen it.
+                if response_yielded:
+                    raise DebridServiceClosedConnectionException(
+                        provider=self.provider
+                    ) from e
+
                 if await self._retry_with_backoff(
                     attempt,
                     max_attempts,
@@ -1063,23 +1085,44 @@ class MediaStream:
         if size <= 0:
             raise ValueError("Size must be positive")
 
-        async with self.establish_connection(
-            start=start,
-            end=start + size - 1,
-        ) as response:
-            data = await response.aread()
+        max_attempts = 4
+        backoffs = [0.2, 0.5, 1.0]
 
-            self.session_statistics.bytes_transferred += len(data)
-
-            verified_data = self._verify_scan_integrity((start, start + size), data)
-
-            if should_cache:
-                await self._cache_chunk(
+        for attempt in range(max_attempts):
+            try:
+                async with self.establish_connection(
                     start=start,
-                    data=verified_data[:size],
-                )
+                    end=start + size - 1,
+                ) as response:
+                    data = await response.aread()
 
-            return verified_data
+                    self.session_statistics.bytes_transferred += len(data)
+
+                    verified_data = self._verify_scan_integrity(
+                        (start, start + size), data
+                    )
+
+                    if should_cache:
+                        await self._cache_chunk(
+                            start=start,
+                            data=verified_data[:size],
+                        )
+
+                    return verified_data
+            except DebridServiceClosedConnectionException:
+                if await self._retry_with_backoff(
+                    attempt,
+                    max_attempts,
+                    backoffs,
+                ):
+                    continue
+
+                raise
+
+        raise DebridServiceException(
+            "Unexpected error connecting to stream",
+            provider=self.provider,
+        )
 
     async def _wait_until_chunks_ready(
         self,

@@ -81,6 +81,9 @@ class DebridCDNUrl:
                         return self.url
             except httpx.TimeoutException as e:
                 logger.error(f"Timeout while validating CDN URL {self.url}: {e}")
+
+                if attempt == 1 and attempt_refresh and (url := self._refresh()):
+                    self.url = url
             except httpx.ConnectError as e:
                 logger.error(
                     f"Connection error while validating CDN URL {self.url}: {e}"
