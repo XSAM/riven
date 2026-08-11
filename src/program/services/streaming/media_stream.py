@@ -85,6 +85,7 @@ class MediaStream:
         self.recent_reads: RecentReads = RecentReads()
         self.is_streaming: trio_util.AsyncBool = trio_util.AsyncBool(False)
         self.is_killed: trio_util.AsyncBool = trio_util.AsyncBool(False)
+        self._stream_start_lock = trio.Lock()
         self._stream_error: trio_util.AsyncValue[Exception | None] = (
             trio_util.AsyncValue(None)
         )
@@ -338,6 +339,28 @@ class MediaStream:
                                         for chunk in chunks:
                                             chunk_label = f"[{chunk.start}-{chunk.end}]"
 
+                                            if (
+                                                connection.current_read_position
+                                                != chunk.start
+                                            ):
+                                                if self.enable_tracing:
+                                                    logger.log(
+                                                        "STREAM",
+                                                        self.build_log_message(
+                                                            f"Stream position {connection.current_read_position} "
+                                                            f"does not match chunk start {chunk.start}; reconnecting."
+                                                        ),
+                                                    )
+
+                                                connection.seek(
+                                                    chunk_range=self.chunker.get_chunk_range(
+                                                        position=chunk.start,
+                                                        size=chunk.size,
+                                                    )
+                                                )
+
+                                                return
+
                                             with benchmark(
                                                 log=lambda duration, c=chunk: (
                                                     logger.log(
@@ -415,51 +438,24 @@ class MediaStream:
                                             ),
                                         )
 
-                                    request_start, _ = read.chunk_range.request_range
-
-                                    if (
-                                        self.config.header_size
-                                        < uncached_chunks[0].start
-                                        < connection.start_position
-                                    ):
-                                        # Backward seek detection:
-                                        #
-                                        # If the requested start is before the start of the stream, we will always need to seek.
-                                        # This is because streams can only read forwards, so a new connection must be made.
-
-                                        if self.enable_tracing:
-                                            logger.log(
-                                                "STREAM",
-                                                self.build_log_message(
-                                                    f"Requested start {request_start} "
-                                                    f"is before current read position {connection.current_read_position} "
-                                                    f"for {self.file_metadata.path}. "
-                                                    f"Seeking to new start position {uncached_chunks[0].start}/{self.file_metadata.file_size}."
-                                                ),
-                                            )
-
-                                        connection.seek(chunk_range=read.chunk_range)
-
-                                        break
+                                    next_chunk_start = uncached_chunks[0].start
 
                                     if (
                                         connection.current_read_position
-                                        < uncached_chunks[0].start
+                                        != next_chunk_start
                                     ):
-                                        # Forward seek detection:
-                                        #
-                                        # If the requested start is after the current read position, we need to seek forward.
-                                        # This is because streams cannot skip chunks of data, so a new connection must be made,
-                                        # to avoid requesting data that will be discarded and using unnecessary bandwidth.
+                                        # Streams can only read forwards from their current position.
+                                        # Reconnect for both forward and backward jumps so bytes are
+                                        # never cached under an offset different from where they came from.
 
                                         if self.enable_tracing:
                                             logger.log(
                                                 "STREAM",
                                                 self.build_log_message(
-                                                    f"Request chunk start {uncached_chunks[0].start} "
-                                                    f"is after current read position {connection.current_read_position} "
+                                                    f"Request chunk start {next_chunk_start} "
+                                                    f"does not match current read position {connection.current_read_position} "
                                                     f"for {self.file_metadata.path}. "
-                                                    f"Seeking to new start position {uncached_chunks[0].start}/{self.file_metadata.file_size}."
+                                                    f"Seeking to new start position {next_chunk_start}/{self.file_metadata.file_size}."
                                                 ),
                                             )
 
@@ -652,9 +648,11 @@ class MediaStream:
             # Start the stream and wait for a connection before progressing with a body read.
             # This MUST be done before assigning a value to current_read,
             # or else the stream will not receive the value.
-            if read_type == "body_read" and not self.is_streaming.value:
-                with trio.fail_after(self.config.connect_timeout_seconds):
-                    await self.nursery.start(self.run, chunk_range.position)
+            if read_type == "body_read":
+                async with self._stream_start_lock:
+                    if not self.is_streaming.value:
+                        with trio.fail_after(self.config.connect_timeout_seconds):
+                            await self.nursery.start(self.run, chunk_range.position)
 
             self.recent_reads.current_read.value = Read(
                 chunk_range=chunk_range,
@@ -860,7 +858,11 @@ class MediaStream:
                         continue
 
                     raise DebridServiceForbiddenException(provider=self.provider) from e
-                elif status_code in (HTTPStatus.NOT_FOUND, HTTPStatus.GONE, HTTPStatus.SERVICE_UNAVAILABLE):
+                elif status_code in (
+                    HTTPStatus.NOT_FOUND,
+                    HTTPStatus.GONE,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                ):
                     # File can't be found at this URL; try refreshing the URL once
                     if attempt == 0:
                         has_fresh_url = await self._refresh_download_url()
